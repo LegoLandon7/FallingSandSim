@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Falling Sand</title>
+    <style>
+        body {
+            margin: 0;
+            background: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        canvas {
+            border: 2px solid #ababab;
+            margin: 8px 8px;
+            image-rendering: pixelated;
+        }
+        
+        .menu {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+
+            justify-content: center;
+            align-items: center
+        }
+
+        .main {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+
+            justify-content: center;
+        }
+
+        button { 
+            border: 2px solid #686977;
+            border-radius: 8px;
+            color: #eee;
+
+            background-color: #4b4e6c;
+
+            padding: 4px 8px;
+
+            min-width: 100px;
+            min-height: 50px;
+        }
+
+        label {
+            color: #eee;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main">
+        <label id="type-label">Type: Sand</label>
+        <canvas id="main-canvas"></canvas>
+    </div>
+
+    <div class="menu">
+        <button id="type-toggle">Change Sand Type</button>
+    </div>
+
+<script>
+
+    // global constants
+    const EMPTY = 0;
+    const SAND  = 1;
+    const WATER = 2;
+
+    let currentType = SAND;
+
+    const COLORS = {
+        [SAND]: [194, 178, 128],
+        [WATER]: [20, 20, 175]
+    };
+
+    // canvas setup
+    const canvas = document.getElementById("main-canvas");
+    const ctx    = canvas.getContext("2d");
+
+    canvas.width  = 100;
+    canvas.height = 100;
+    canvas.style.width  = "400px";
+    canvas.style.height = "400px";
+    ctx.imageSmoothingEnabled = false;
+
+    // sand grid
+    const grid = new Uint8Array(canvas.width * canvas.height);
+
+    function inBounds(x, y) {
+        return x >= 0 && x < canvas.width && y >= 0 && y < canvas.height;
+    }
+    function getCell(x, y) {
+        if (!inBounds(x, y)) return -1;
+        return grid[y * canvas.width + x];
+    }
+    function setCell(x, y, type) {
+        if (!inBounds(x, y)) return;
+        grid[y * canvas.width + x] = type;
+    }
+
+    // pixel buffer
+    const imageData = ctx.createImageData(canvas.width, canvas.height);
+    const data      = imageData.data;
+
+    function setPixel(x, y, r, g, b) {
+        const i = (y * canvas.width + x) * 4;
+        data[i]     = r;
+        data[i + 1] = g;
+        data[i + 2] = b;
+        data[i + 3] = 255;
+    }
+
+    // mouse input
+    let painting = false;
+
+    function spawnAt(e) {
+        const rect   = canvas.getBoundingClientRect();
+        const scaleX = canvas.width  / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = Math.floor((e.clientX - rect.left) * scaleX);
+        const y = Math.floor((e.clientY - rect.top)  * scaleY);
+
+        // paint a small brush
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                if (Math.random() > 0.4) setCell(x + dx, y + dy, currentType);
+            }
+        }
+    }
+
+    canvas.addEventListener("mousedown", (e) => { painting = true; spawnAt(e); });
+    canvas.addEventListener("mousemove", (e) => { if (painting) spawnAt(e); });
+    canvas.addEventListener("mouseup",   ()  => { painting = false; });
+    canvas.addEventListener("mouseleave",()  => { painting = false; });
+
+    const typeLabel = document.getElementById("type-label");
+    const toggleBtn = document.getElementById("type-toggle");
+
+    toggleBtn.addEventListener("click", () => {
+        if (currentType === SAND) {
+            currentType = WATER;
+            typeLabel.textContent = "Type: Water";
+        } else {
+            currentType = SAND;
+            typeLabel.textContent = "Type: Sand";
+        }
+    });
+
+    // update sand falling
+    function update() {
+        for (let y = canvas.height - 2; y >= 0; y--) {
+            for (let x = 0; x < canvas.width; x++) {
+
+                const cell = getCell(x, y);
+                if (cell === EMPTY) continue;
+
+                const leftFirst = Math.random() > 0.5;
+
+                // SAND PHYSICS
+                if (cell === SAND) {
+                    if (getCell(x, y + 1) === EMPTY) {
+                        setCell(x, y, EMPTY);
+                        setCell(x, y + 1, SAND);
+                    } else if (leftFirst && getCell(x - 1, y + 1) === EMPTY) {
+                        setCell(x, y, EMPTY);
+                        setCell(x - 1, y + 1, SAND);
+                    } else if (!leftFirst && getCell(x + 1, y + 1) === EMPTY) {
+                        setCell(x, y, EMPTY);
+                        setCell(x + 1, y + 1, SAND);
+                    } else if (getCell(x - 1, y + 1) === EMPTY) {
+                        setCell(x, y, EMPTY);
+                        setCell(x - 1, y + 1, SAND);
+                    } else if (getCell(x + 1, y + 1) === EMPTY) {
+                        setCell(x, y, EMPTY);
+                        setCell(x + 1, y + 1, SAND);
+                    }
+                }
+
+                // WATER PHYSICS
+                else if (cell === WATER) {
+
+                    // fall down
+                    if (getCell(x, y + 1) === EMPTY) {
+                        setCell(x, y, EMPTY);
+                        setCell(x, y + 1, WATER);
+                        continue;
+                    }
+
+                    const dirs = leftFirst ? [-1, 1] : [1, -1];
+
+                    for (let d of dirs) {
+                        if (getCell(x + d, y + 1) === EMPTY) {
+                            setCell(x, y, EMPTY);
+                            setCell(x + d, y + 1, WATER);
+                            continue;
+                        }
+                    }
+
+                    for (let d of dirs) {
+                        if (getCell(x + d, y) === EMPTY) {
+                            setCell(x, y, EMPTY);
+                            setCell(x + d, y, WATER);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // draw to canvas
+    function draw() {
+        data.fill(0);
+
+        for (let y = 0; y < canvas.height; y++) {
+            for (let x = 0; x < canvas.width; x++) {
+                const cell = getCell(x, y);
+                if (cell === EMPTY) continue;
+                const [r, g, b] = COLORS[cell];
+                setPixel(x, y, r, g, b);
+            }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+    }
+
+    // main loop
+    function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+    }
+
+    loop();
+
+</script>
+</body>
+</html>
